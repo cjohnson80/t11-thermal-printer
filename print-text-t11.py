@@ -53,6 +53,10 @@ def print_text_file(text_path, threshold=128):
     try:
         with open(USB_DEVICE, 'wb') as f:
             f.write(b'\x1b@') # Init
+            
+            # 1. Top padding (50 lines of white)
+            f.write(b'\x1bd\x32')
+            
             print(f"Printing {height} lines...")
             for y_start in range(0, height, LINES_PER_BLOCK):
                 y_end = min(y_start + LINES_PER_BLOCK, height)
@@ -66,7 +70,9 @@ def print_text_file(text_path, threshold=128):
                 time.sleep(0.1)
                 if y_start % 480 == 0:
                     print(f"Progress: {y_start}/{height} lines...")
-            f.write(b'\x1bd\x0a')
+            
+            # 2. Bottom padding (100 lines of white / ~0.5 inch)
+            f.write(b'\x1bd\x64') 
             f.flush()
         print("Done!")
     except Exception as e:

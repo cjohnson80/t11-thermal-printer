@@ -7,7 +7,7 @@ import time
 USB_DEVICE = '/dev/usb/lp0'
 WIDTH_PX = 1728
 BYTES_PER_LINE = WIDTH_PX // 8
-LINES_PER_BLOCK = 24 # Send 24 lines at once to ensure continuity
+LINES_PER_BLOCK = 8 # Ultra-small blocks for extreme stability
 
 def print_pdf_page(pdf_path, page_num=0, threshold=128):
     print(f"Converting PDF {pdf_path} [Page {page_num}]...")
@@ -52,13 +52,12 @@ def print_pdf_page(pdf_path, page_num=0, threshold=128):
                 block_data = bit_data[start_idx:end_idx]
                 
                 # GS v 0 0 xL xH yL yH
-                # Set yL and yH to the number of lines in this block
                 header = bytes([0x1d, 0x76, 0x30, 0, BYTES_PER_LINE % 256, BYTES_PER_LINE // 256, num_lines % 256, num_lines // 256])
                 
                 f.write(header + block_data)
                 f.flush()
                 
-                # Delay for the WHOLE block (adjust based on block size)
+                # 0.1s delay for ultra-stability on fragile hardware
                 time.sleep(0.1) 
                 
                 if y_start % 480 == 0:
@@ -74,7 +73,7 @@ def print_pdf_page(pdf_path, page_num=0, threshold=128):
             os.remove(raw_gray)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='PDF to T11 (Block Printing Fix)')
+    parser = argparse.ArgumentParser(description='PDF to T11 (Ultra-Safe Mode)')
     parser.add_argument('pdf')
     parser.add_argument('--page', type=int, default=0)
     parser.add_argument('--threshold', type=int, default=128)
