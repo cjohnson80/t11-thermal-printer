@@ -1,0 +1,61 @@
+*PPD-Adobe: "4.3"
+*%%%% PPD file for T11 Thermal Printer (8.5x11).
+*FormatVersion: "4.3"
+*FileVersion: "1.0"
+*LanguageVersion: English
+*LanguageEncoding: ISOLatin1
+*PCFileName: "t11.ppd"
+*Product: "(T11)"
+*Manufacturer: "Generic"
+*ModelName: "T11 Thermal Printer 8.5x11"
+*ShortNickName: "T11-8.5x11"
+*NickName: "T11 Thermal Printer (US Letter)"
+*PSVersion: "(3010.000) 550"
+*LanguageLevel: "3"
+*ColorDevice: False
+*DefaultColorSpace: Gray
+*FileSystem: False
+*Throughput: "1"
+*LandscapeOrientation: Plus90
+*TTRasterizer: Type42
+*VariablePaperSize: True
+*cupsVersion: 2.2
+*cupsModelNumber: 1728
+*cupsManualCopies: True
+*cupsFilter: "application/vnd.cups-raster 100 rastertozj"
+
+*OpenUI *PageSize/Media Size: PickOne
+*OrderDependency: 10 AnySetup *PageSize
+*DefaultPageSize: Letter
+*PageSize Letter/US Letter (8.5x11): "<</PageSize[612 792]>>setpagedevice"
+*CloseUI: *PageSize
+
+*OpenUI *PageRegion/Media Size: PickOne
+*OrderDependency: 10 AnySetup *PageRegion
+*DefaultPageRegion: Letter
+*PageRegion Letter/US Letter (8.5x11): "<</PageSize[612 792]>>setpagedevice"
+*CloseUI: *PageRegion
+
+*DefaultImageableArea: Letter
+*ImageableArea Letter/US Letter (8.5x11): "0 0 612 792"
+
+*DefaultPaperDimension: Letter
+*PaperDimension Letter/US Letter (8.5x11): "612 792"
+
+*MaxMediaWidth: "612"
+*MaxMediaHeight: "3600"
+*HWMargins: 0 0 0 0
+*CustomPageSize True: "pop pop pop <</PageSize[5 -2 roll]/ImagingBBox null>>setpagedevice"
+*ParamCustomPageSize Width: 1 points 72 612
+*ParamCustomPageSize Height: 2 points 72 3600
+*ParamCustomPageSize WidthOffset: 3 points 0 0
+*ParamCustomPageSize HeightOffset: 4 points 0 0
+*ParamCustomPageSize Orientation: 5 int 0 0
+
+*OpenUI *Resolution/Resolution: PickOne
+*OrderDependency: 10 AnySetup *Resolution
+*DefaultResolution: 203x203dpi
+*Resolution 203x203dpi/203 DPI: "<</HWResolution[203 203]/cupsColorSpace 3>>setpagedevice"
+*CloseUI: *Resolution
+
+*DefaultFont: Courier
