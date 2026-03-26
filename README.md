@@ -55,5 +55,12 @@ python3 print-image-t11-usb.py image.png --mirror
 - **All Black Page:** Ensure the PDF is flattened against a white background (handled automatically by `print-pdf-t11.py`).
 - **White Lines:** Occurs if sending lines individually. Use the "Block Mode" scripts provided here to ensure continuous printing.
 
+## Future Compatibility & CUPS Deprecation
+You may see a notice in CUPS stating that "Printer drivers are deprecated and will stop working in a future version." 
+
+**Do not worry.**
+1. **Long-term Support:** CUPS (and most Linux distros) will continue to support the current PPD/Filter system for several years.
+2. **Standalone Scripts:** The Python scripts included here (`print-pdf-t11.py` and `print-image-t11-usb.py`) **do not use CUPS**. They communicate directly with the printer via the USB device node (`/dev/usb/lp0`). This means even if CUPS completely removes driver support in the distant future, your printer will remain fully functional using these scripts.
+
 ## Acknowledgments
 The `rastertozj` filter and PPD base are derived from the [zj-58 project](https://github.com/klirichek/zj-58). This version adds essential delays for A4/T11 hardware stability.
