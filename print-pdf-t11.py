@@ -5,13 +5,12 @@ import argparse
 import time
 
 USB_DEVICE = '/dev/usb/lp0'
-# ESC * 33 (24-dot double density) expects 3 bytes (24 bits) per vertical line
-# This means we send image in horizontal strips of 24 pixels high
 WIDTH_PX = 1728
 BYTES_PER_LINE = WIDTH_PX // 8
+LINES_PER_BLOCK = 24 # Send 24 lines at once to ensure continuity
 
 def print_pdf_page(pdf_path, page_num=0, threshold=128):
-    print(f"Converting PDF {pdf_path} (ESC * mode)...")
+    print(f"Converting PDF {pdf_path} [Page {page_num}]...")
     raw_gray = "page.gray"
     
     cmd = [
@@ -27,45 +26,44 @@ def print_pdf_page(pdf_path, page_num=0, threshold=128):
         gray_data = f.read()
     
     height = len(gray_data) // WIDTH_PX
-    print(f"Packing {WIDTH_PX}x{height} pixels for ESC *...")
+    print(f"Packing {WIDTH_PX}x{height} pixels into bits...")
+    
+    bit_data = bytearray()
+    for y in range(height):
+        for x_byte in range(BYTES_PER_LINE):
+            byte_val = 0
+            for bit in range(8):
+                pixel_idx = (y * WIDTH_PX) + (x_byte * 8) + bit
+                if pixel_idx < len(gray_data) and gray_data[pixel_idx] < threshold:
+                    byte_val |= (1 << (7 - bit))
+            bit_data.append(byte_val)
 
     try:
         with open(USB_DEVICE, 'wb') as f:
             f.write(b'\x1b@') # Init
+            print(f"Printing {height} lines in blocks of {LINES_PER_BLOCK}...")
             
-            # ESC * m nL nH d1...dk
-            # m=33 (24-dot double density)
-            # nL, nH = WIDTH_PX
-            nL = WIDTH_PX % 256
-            nH = WIDTH_PX // 256
-            
-            # Loop through 24-pixel high strips
-            for y_strip in range(0, height, 24):
-                # Header for a 24-dot high strip
-                f.write(bytes([0x1b, 0x2a, 33, nL, nH]))
+            for y_start in range(0, height, LINES_PER_BLOCK):
+                y_end = min(y_start + LINES_PER_BLOCK, height)
+                num_lines = y_end - y_start
                 
-                # Each 'column' in the strip is 3 bytes (24 vertical pixels)
-                for x in range(WIDTH_PX):
-                    col_data = 0
-                    for bit in range(24):
-                        y = y_strip + bit
-                        if y < height:
-                            pixel_idx = (y * WIDTH_PX) + x
-                            if gray_data[pixel_idx] < threshold:
-                                # Pack into 3 bytes (MSB of first byte is top pixel)
-                                col_data |= (1 << (23 - bit))
-                    
-                    # Write the 3 bytes for this column
-                    f.write(bytes([(col_data >> 16) & 0xFF, (col_data >> 8) & 0xFF, col_data & 0xFF]))
+                start_idx = y_start * BYTES_PER_LINE
+                end_idx = y_end * BYTES_PER_LINE
+                block_data = bit_data[start_idx:end_idx]
                 
-                f.write(b'\x0a') # Line feed after strip
+                # GS v 0 0 xL xH yL yH
+                header = bytes([0x1d, 0x76, 0x30, 0, BYTES_PER_LINE % 256, BYTES_PER_LINE // 256, num_lines % 256, num_lines // 256])
+                
+                f.write(header + block_data)
                 f.flush()
-                time.sleep(0.2) # Long delay between strips for safety
                 
-                if y_strip % 240 == 0:
-                    print(f"Progress: {y_strip}/{height} lines...")
+                # Delay for stability
+                time.sleep(0.15) 
+                
+                if y_start % 480 == 0:
+                    print(f"Progress: {y_start}/{height} lines...")
             
-            f.write(b'\x1bd\x0a')
+            f.write(b'\x1bd\x05') # Reduced final feed
             f.flush()
         print("Done!")
     except Exception as e:
@@ -75,7 +73,7 @@ def print_pdf_page(pdf_path, page_num=0, threshold=128):
             os.remove(raw_gray)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='PDF to T11 (ESC * Mode)')
+    parser = argparse.ArgumentParser(description='PDF to T11 (Success Version Reverted)')
     parser.add_argument('pdf')
     parser.add_argument('--page', type=int, default=0)
     parser.add_argument('--threshold', type=int, default=128)
