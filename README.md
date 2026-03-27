@@ -2,6 +2,8 @@
 
 This repository provides custom Python scripts and a pre-compiled CUPS filter to enable high-quality printing on the **T11 / Phomemo M08F** A4/US-Letter thermal printer using Linux.
 
+**Note:** This solution is currently optimized for printing **PDF and Image files** using the provided standalone Python scripts. While CUPS integration is included, the standalone scripts offer the highest stability for this specific hardware.
+
 ## Hardware Support
 - **Device ID:** `0483:5720` (STMicroelectronics STM32 Mass Storage/Printer)
 - **Paper Size:** 8.5" x 11" (US Letter) or A4
