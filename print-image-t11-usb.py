@@ -43,7 +43,7 @@ def print_image_gold(image_path, threshold=128, mirror=False):
             time.sleep(0.2)
         # CLEAN EXIT SEQUENCE
         print("Finishing job and feeding paper...")
-        sock.send(b'\x1bd\x05') # Final feed
+        sock.send(b'\x1bd\x02') # Reduced feed to 2 lines
         time.sleep(2.0)         # WAIT for the physical motor to finish
         sock.send(b'\x1b@')     # Reset printer state for the next job
         time.sleep(0.5)         # Let the reset settle

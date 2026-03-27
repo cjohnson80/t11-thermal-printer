@@ -45,7 +45,6 @@ def print_text_file(text_path, threshold=50):
         print("Connected!")
         
         sock.send(b'\x1b@') # Init
-        sock.send(b'\x1bd\x32') # Top padding
         
         print(f"Printing {height} lines...")
         for y_start in range(0, height, LINES_PER_BLOCK):
@@ -62,7 +61,7 @@ def print_text_file(text_path, threshold=50):
         
         # CLEAN EXIT SEQUENCE
         print("Finishing job and feeding paper...")
-        sock.send(b'\x1bd\x64') # Bottom padding
+        sock.send(b'\x1bd\x02') # Reduced feed to 2 lines
         time.sleep(2.0)         # WAIT for the physical motor to finish
         sock.send(b'\x1b@')     # Reset printer state for the next job
         time.sleep(0.5)         # Let the reset settle
