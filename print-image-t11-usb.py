@@ -10,11 +10,11 @@ USB_DEVICE = '/dev/usb/lp0'
 # US Letter Thermal Printer Specs (8.5 inches)
 WIDTH_PX = 1728
 BYTES_PER_LINE = WIDTH_PX // 8
-LINES_PER_BLOCK = 8 # Ultra-safe small blocks
+LINES_PER_BLOCK = 8
 
-def convert_and_print(image_path, threshold=128, mirror=False):
+def convert_and_print(image_path, threshold=50, mirror=False):
     print(f"Processing image for 8.5x11 USB: {image_path}")
-    raw_gray = "image.gray"
+    mono_output = "image.mono"
     
     cmd = [
         "magick", 
@@ -23,31 +23,23 @@ def convert_and_print(image_path, threshold=128, mirror=False):
         "-alpha", "remove", 
         "-flatten", 
         "-resize", f"{WIDTH_PX}x", 
-        "-colorspace", "gray", 
-        "-depth", "8", 
-        f"GRAY:{raw_gray}"
+        "-colorspace", "gray", "-threshold", f"{threshold}%", 
+        "-depth", "1", 
+        f"MONO:{mono_output}"
     ]
     
     if mirror:
         cmd.insert(-1, "-flop")
         
+    print("Rendering...")
+    start_time = time.time()
     subprocess.run(cmd, check=True)
     
-    with open(raw_gray, "rb") as f:
-        gray_data = f.read()
+    with open(mono_output, "rb") as f:
+        bit_data = f.read()
     
-    height = len(gray_data) // WIDTH_PX
-    print(f"Image Ready: {WIDTH_PX}x{height} pixels. Packing bits...")
-
-    bit_data = bytearray()
-    for y in range(height):
-        for x_byte in range(BYTES_PER_LINE):
-            byte_val = 0
-            for bit in range(8):
-                pixel_idx = (y * WIDTH_PX) + (x_byte * 8) + bit
-                if pixel_idx < len(gray_data) and gray_data[pixel_idx] < threshold:
-                    byte_val |= (1 << (7 - bit))
-            bit_data.append(byte_val)
+    height = len(bit_data) // BYTES_PER_LINE
+    print(f"Rendered in {time.time() - start_time:.2f}s. Image: {WIDTH_PX}x{height}")
 
     try:
         with open(USB_DEVICE, 'wb') as f:
@@ -65,7 +57,7 @@ def convert_and_print(image_path, threshold=128, mirror=False):
                 
                 f.write(header + block_data)
                 f.flush()
-                time.sleep(0.2) # High delay for stability
+                time.sleep(0.2) 
                 
                 if y_start % 480 == 0:
                     print(f"Progress: {y_start}/{height} lines...")
@@ -76,13 +68,13 @@ def convert_and_print(image_path, threshold=128, mirror=False):
     except Exception as e:
         print(f"\nUSB Error: {e}")
     finally:
-        if os.path.exists(raw_gray):
-            os.remove(raw_gray)
+        if os.path.exists(mono_output):
+            os.remove(mono_output)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Print 8.5x11 image to T11 (Safe Mode)')
+    parser = argparse.ArgumentParser(description='Print 8.5x11 image to T11 (Optimized Startup)')
     parser.add_argument('image', help='Path to image')
-    parser.add_argument('--threshold', type=int, default=128, help='B/W threshold (0-255)')
+    parser.add_argument('--threshold', type=int, default=50, help='Darkness threshold (1-99, default 50)')
     parser.add_argument('--mirror', action='store_true', help='Mirror image')
     args = parser.parse_args()
     convert_and_print(args.image, args.threshold, args.mirror)

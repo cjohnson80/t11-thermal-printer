@@ -7,11 +7,11 @@ import time
 USB_DEVICE = '/dev/usb/lp0'
 WIDTH_PX = 1728
 BYTES_PER_LINE = WIDTH_PX // 8
-LINES_PER_BLOCK = 8 # Ultra-safe blocks
+LINES_PER_BLOCK = 8
 
-def print_text_file(text_path, threshold=128):
+def print_text_file(text_path, threshold=50):
     print(f"Rendering text file {text_path} for 8.5x11...")
-    raw_gray = "text.gray"
+    mono_output = "text.mono"
     
     cmd = [
         "magick", 
@@ -21,28 +21,20 @@ def print_text_file(text_path, threshold=128):
         "-pointsize", "12", 
         "-size", f"{WIDTH_PX}x", 
         f"caption:@{text_path}", 
-        "-colorspace", "gray", 
-        "-depth", "8", 
-        f"GRAY:{raw_gray}"
+        "-colorspace", "gray", "-threshold", f"{threshold}%", 
+        "-depth", "1", 
+        f"MONO:{mono_output}"
     ]
     
+    print("Rendering...")
+    start_time = time.time()
     subprocess.run(cmd, check=True)
     
-    with open(raw_gray, "rb") as f:
-        gray_data = f.read()
+    with open(mono_output, "rb") as f:
+        bit_data = f.read()
     
-    height = len(gray_data) // WIDTH_PX
-    print(f"Text Rendered: {WIDTH_PX}x{height} pixels. Packing bits...")
-
-    bit_data = bytearray()
-    for y in range(height):
-        for x_byte in range(BYTES_PER_LINE):
-            byte_val = 0
-            for bit in range(8):
-                pixel_idx = (y * WIDTH_PX) + (x_byte * 8) + bit
-                if pixel_idx < len(gray_data) and gray_data[pixel_idx] < threshold:
-                    byte_val |= (1 << (7 - bit))
-            bit_data.append(byte_val)
+    height = len(bit_data) // BYTES_PER_LINE
+    print(f"Rendered in {time.time() - start_time:.2f}s. Image: {WIDTH_PX}x{height}")
 
     try:
         with open(USB_DEVICE, 'wb') as f:
@@ -59,7 +51,7 @@ def print_text_file(text_path, threshold=128):
                 header = bytes([0x1d, 0x76, 0x30, 0, BYTES_PER_LINE % 256, BYTES_PER_LINE // 256, num_lines % 256, num_lines // 256])
                 f.write(header + block_data)
                 f.flush()
-                time.sleep(0.2) # High delay for stability
+                time.sleep(0.2)
                 if y_start % 480 == 0:
                     print(f"Progress: {y_start}/{height} lines...")
             
@@ -69,12 +61,12 @@ def print_text_file(text_path, threshold=128):
     except Exception as e:
         print(f"Error: {e}")
     finally:
-        if os.path.exists(raw_gray):
-            os.remove(raw_gray)
+        if os.path.exists(mono_output):
+            os.remove(mono_output)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Text to T11 (Safe Mode)')
+    parser = argparse.ArgumentParser(description='Text to T11 (Optimized Startup)')
     parser.add_argument('text_file')
-    parser.add_argument('--threshold', type=int, default=128)
+    parser.add_argument('--threshold', type=int, default=50, help='Darkness threshold (1-99, default 50)')
     args = parser.parse_args()
     print_text_file(args.text_file, args.threshold)
