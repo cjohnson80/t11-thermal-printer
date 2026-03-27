@@ -59,6 +59,12 @@ def print_pdf_gold(pdf_path, page_num=0, threshold=180):
         sock.send(b'\x00' * 10)
         sock.send(b'\x1b@') # Init
         
+        # SWITCH TO CONTINUOUS MODE (Disable Black Mark / Page sensing)
+        # Standard command for many Chinese A4 printers to use continuous roll
+        print("Setting printer to Continuous Mode...")
+        sock.send(b'\x1f\x1b\x1f\xa1\x00') 
+        time.sleep(0.5)
+        
         print(f"Printing {height} lines...")
         for y_start in range(0, height, LINES_PER_BLOCK):
             y_end = min(y_start + LINES_PER_BLOCK, height)

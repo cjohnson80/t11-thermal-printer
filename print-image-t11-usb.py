@@ -35,6 +35,12 @@ def print_image_gold(image_path, threshold=128, mirror=False):
 
     try:
         sock.send(b'\x1b@')
+        
+        # SWITCH TO CONTINUOUS MODE
+        print("Setting printer to Continuous Mode...")
+        sock.send(b'\x1f\x1b\x1f\xa1\x00') 
+        time.sleep(0.5)
+        
         for y_start in range(0, height, LINES_PER_BLOCK):
             y_end = min(y_start + LINES_PER_BLOCK, height)
             num_lines = y_end - y_start
