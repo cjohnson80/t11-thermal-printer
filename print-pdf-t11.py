@@ -77,9 +77,15 @@ def print_pdf_gold(pdf_path, page_num=0, threshold=180):
             if y_start % 240 == 0:
                 print(f"Progress: {y_start}/{height} lines...")
         
+        # CLEAN EXIT SEQUENCE
+        print("Finishing job and feeding paper...")
         sock.send(b'\x1bd\x0a') # Final feed
+        time.sleep(2.0)         # WAIT for the physical motor to finish
+        sock.send(b'\x1b@')     # Reset printer state for the next job
+        time.sleep(0.5)         # Let the reset settle
+        
         sock.close()
-        print("Success!")
+        print("Success! Printer ready for next page.")
     except Exception as e:
         print(f"Error: {e}")
     finally:

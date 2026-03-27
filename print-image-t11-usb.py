@@ -41,9 +41,15 @@ def print_image_gold(image_path, threshold=128, mirror=False):
             header = bytes([0x1d, 0x76, 0x30, 0, BYTES_PER_LINE % 256, BYTES_PER_LINE // 256, num_lines % 256, num_lines // 256])
             sock.sendall(header + bit_data[y_start * BYTES_PER_LINE : y_end * BYTES_PER_LINE])
             time.sleep(0.2)
-        sock.send(b'\x1bd\x05')
+        # CLEAN EXIT SEQUENCE
+        print("Finishing job and feeding paper...")
+        sock.send(b'\x1bd\x05') # Final feed
+        time.sleep(2.0)         # WAIT for the physical motor to finish
+        sock.send(b'\x1b@')     # Reset printer state for the next job
+        time.sleep(0.5)         # Let the reset settle
+        
         sock.close()
-        print("Success!")
+        print("Success! Printer ready for next page.")
     finally:
         if os.path.exists(raw_gray): os.remove(raw_gray)
 
