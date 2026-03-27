@@ -1,73 +1,95 @@
+import socket
 import sys
 import subprocess
 import os
 import argparse
 import time
 
-USB_DEVICE = '/dev/usb/lp0'
+# Printer configuration
+PRINTER_ADDR = '41:42:86:99:6F:BA'
+RFCOMM_CHANNEL = 2
+
+# US Letter Thermal Printer Specs (8.5 inches)
 WIDTH_PX = 1728
 BYTES_PER_LINE = WIDTH_PX // 8
-LINES_PER_BLOCK = 8
+LINES_PER_BLOCK = 24
 
-def print_pdf_page(pdf_path, page_num=0, threshold=50):
-    print(f"Converting PDF {pdf_path} [Page {page_num}]...")
-    mono_output = "page.mono"
+def print_pdf_gold(pdf_path, page_num=0, threshold=180):
+    print(f"Connecting to {PRINTER_ADDR}...")
+    try:
+        sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
+        sock.connect((PRINTER_ADDR, RFCOMM_CHANNEL))
+        print("Connected!")
+    except Exception as e:
+        print(f"Connection Failed: {e}")
+        return
+
+    print(f"Rendering PDF {pdf_path}...")
+    raw_gray = "gold.gray"
     
-    # Let Magick do the heavy lifting (much faster than Python loops)
-    # -threshold X% handles the darkness
-    # -depth 1 MONO: outputs exactly the bitmask the printer wants
+    # 1. Render to raw 8-bit grayscale (Solid reliability)
     cmd = [
         "magick", "-density", "300", 
         "-background", "white", f"{pdf_path}[{page_num}]", 
         "-alpha", "remove", "-flatten", 
         "-resize", f"{WIDTH_PX}x", 
-        "-colorspace", "gray", "-threshold", f"{threshold}%", 
-        "-depth", "1", f"MONO:{mono_output}"
+        "-colorspace", "gray", "-depth", "8", f"GRAY:{raw_gray}"
     ]
-    
-    print("Rendering...")
-    start_time = time.time()
     subprocess.run(cmd, check=True)
     
-    with open(mono_output, "rb") as f:
-        bit_data = f.read()
+    with open(raw_gray, "rb") as f:
+        gray_data = f.read()
     
-    height = len(bit_data) // BYTES_PER_LINE
-    print(f"Rendered in {time.time() - start_time:.2f}s. Image: {WIDTH_PX}x{height}")
+    height = len(gray_data) // WIDTH_PX
+    print(f"Packing {WIDTH_PX}x{height} pixels (Manual MSB Mode)...")
+
+    # 2. Manual Packing (This is the secret to non-garbled text)
+    bit_data = bytearray()
+    for y in range(height):
+        for x_byte in range(BYTES_PER_LINE):
+            byte_val = 0
+            for bit in range(8):
+                pixel_idx = (y * WIDTH_PX) + (x_byte * 8) + bit
+                if pixel_idx < len(gray_data) and gray_data[pixel_idx] < threshold:
+                    byte_val |= (1 << (7 - bit))
+            bit_data.append(byte_val)
 
     try:
-        with open(USB_DEVICE, 'wb') as f:
-            f.write(b'\x1b@') # Init
-            print(f"Printing {height} lines in safe-mode...")
+        # Clear printer buffer
+        sock.send(b'\x00' * 10)
+        sock.send(b'\x1b@') # Init
+        
+        print(f"Printing {height} lines...")
+        for y_start in range(0, height, LINES_PER_BLOCK):
+            y_end = min(y_start + LINES_PER_BLOCK, height)
+            num_lines = y_end - y_start
             
-            for y_start in range(0, height, LINES_PER_BLOCK):
-                y_end = min(y_start + LINES_PER_BLOCK, height)
-                num_lines = y_end - y_start
-                start_idx = y_start * BYTES_PER_LINE
-                end_idx = y_end * BYTES_PER_LINE
-                block_data = bit_data[start_idx:end_idx]
-                
-                header = bytes([0x1d, 0x76, 0x30, 0, BYTES_PER_LINE % 256, BYTES_PER_LINE // 256, num_lines % 256, num_lines // 256])
-                f.write(header + block_data)
-                f.flush()
-                time.sleep(0.2) 
-                
-                if y_start % 480 == 0:
-                    print(f"Progress: {y_start}/{height} lines...")
+            start_idx = y_start * BYTES_PER_LINE
+            end_idx = y_end * BYTES_PER_LINE
+            block_data = bit_data[start_idx:end_idx]
             
-            f.write(b'\x1bd\x05')
-            f.flush()
-        print("Done!")
+            # GS v 0 Header
+            header = bytes([0x1d, 0x76, 0x30, 0, BYTES_PER_LINE % 256, BYTES_PER_LINE // 256, num_lines % 256, num_lines // 256])
+            
+            sock.sendall(header + block_data)
+            time.sleep(0.2) # High stability delay
+            
+            if y_start % 240 == 0:
+                print(f"Progress: {y_start}/{height} lines...")
+        
+        sock.send(b'\x1bd\x0a') # Final feed
+        sock.close()
+        print("Success!")
     except Exception as e:
         print(f"Error: {e}")
     finally:
-        if os.path.exists(mono_output):
-            os.remove(mono_output)
+        if os.path.exists(raw_gray):
+            os.remove(raw_gray)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='PDF to T11 (Optimized Startup)')
+    parser = argparse.ArgumentParser(description='T11 Gold Standard BT Driver')
     parser.add_argument('pdf')
     parser.add_argument('--page', type=int, default=0)
-    parser.add_argument('--threshold', type=int, default=50, help='Darkness threshold (1-99, default 50)')
+    parser.add_argument('--threshold', type=int, default=180)
     args = parser.parse_args()
-    print_pdf_page(args.pdf, args.page, args.threshold)
+    print_pdf_gold(args.pdf, args.page, args.threshold)

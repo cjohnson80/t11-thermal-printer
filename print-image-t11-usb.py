@@ -1,80 +1,56 @@
-import sys
-import subprocess
-import os
-import argparse
-import time
+import socket, sys, subprocess, os, argparse, time
 
-# USB Device
-USB_DEVICE = '/dev/usb/lp0'
-
-# US Letter Thermal Printer Specs (8.5 inches)
+PRINTER_ADDR = '41:42:86:99:6F:BA'
+RFCOMM_CHANNEL = 2
 WIDTH_PX = 1728
 BYTES_PER_LINE = WIDTH_PX // 8
-LINES_PER_BLOCK = 8
+LINES_PER_BLOCK = 24
 
-def convert_and_print(image_path, threshold=50, mirror=False):
-    print(f"Processing image for 8.5x11 USB: {image_path}")
-    mono_output = "image.mono"
-    
-    cmd = [
-        "magick", 
-        "-background", "white", 
-        image_path, 
-        "-alpha", "remove", 
-        "-flatten", 
-        "-resize", f"{WIDTH_PX}x", 
-        "-colorspace", "gray", "-threshold", f"{threshold}%", 
-        "-depth", "1", 
-        f"MONO:{mono_output}"
-    ]
-    
-    if mirror:
-        cmd.insert(-1, "-flop")
-        
-    print("Rendering...")
-    start_time = time.time()
+def print_image_gold(image_path, threshold=128, mirror=False):
+    print(f"Connecting to {PRINTER_ADDR}...")
+    try:
+        sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
+        sock.connect((PRINTER_ADDR, RFCOMM_CHANNEL))
+        print("Connected!")
+    except Exception as e:
+        print(f"Connection Failed: {e}"); return
+
+    raw_gray = "gold_img.gray"
+    cmd = ["magick", "-background", "white", image_path, "-alpha", "remove", "-flatten", "-resize", f"{WIDTH_PX}x"]
+    if mirror: cmd.insert(-1, "-flop")
+    cmd += ["-colorspace", "gray", "-depth", "8", f"GRAY:{raw_gray}"]
     subprocess.run(cmd, check=True)
     
-    with open(mono_output, "rb") as f:
-        bit_data = f.read()
-    
-    height = len(bit_data) // BYTES_PER_LINE
-    print(f"Rendered in {time.time() - start_time:.2f}s. Image: {WIDTH_PX}x{height}")
+    with open(raw_gray, "rb") as f: gray_data = f.read()
+    height = len(gray_data) // WIDTH_PX
+    bit_data = bytearray()
+    for y in range(height):
+        for x_byte in range(BYTES_PER_LINE):
+            byte_val = 0
+            for bit in range(8):
+                pixel_idx = (y * WIDTH_PX) + (x_byte * 8) + bit
+                if pixel_idx < len(gray_data) and gray_data[pixel_idx] < threshold:
+                    byte_val |= (1 << (7 - bit))
+            bit_data.append(byte_val)
 
     try:
-        with open(USB_DEVICE, 'wb') as f:
-            f.write(b'\x1b@') # Init
-            print(f"Printing {height} lines in safe-mode...")
-            
-            for y_start in range(0, height, LINES_PER_BLOCK):
-                y_end = min(y_start + LINES_PER_BLOCK, height)
-                num_lines = y_end - y_start
-                start_idx = y_start * BYTES_PER_LINE
-                end_idx = y_end * BYTES_PER_LINE
-                block_data = bit_data[start_idx:end_idx]
-                
-                header = bytes([0x1d, 0x76, 0x30, 0, BYTES_PER_LINE % 256, BYTES_PER_LINE // 256, num_lines % 256, num_lines // 256])
-                
-                f.write(header + block_data)
-                f.flush()
-                time.sleep(0.2) 
-                
-                if y_start % 480 == 0:
-                    print(f"Progress: {y_start}/{height} lines...")
-            
-            f.write(b'\x1bd\x05') 
-            f.flush()
-        print("\nSuccess! Image printed successfully via USB.")
-    except Exception as e:
-        print(f"\nUSB Error: {e}")
+        sock.send(b'\x1b@')
+        for y_start in range(0, height, LINES_PER_BLOCK):
+            y_end = min(y_start + LINES_PER_BLOCK, height)
+            num_lines = y_end - y_start
+            header = bytes([0x1d, 0x76, 0x30, 0, BYTES_PER_LINE % 256, BYTES_PER_LINE // 256, num_lines % 256, num_lines // 256])
+            sock.sendall(header + bit_data[y_start * BYTES_PER_LINE : y_end * BYTES_PER_LINE])
+            time.sleep(0.2)
+        sock.send(b'\x1bd\x05')
+        sock.close()
+        print("Success!")
     finally:
-        if os.path.exists(mono_output):
-            os.remove(mono_output)
+        if os.path.exists(raw_gray): os.remove(raw_gray)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Print 8.5x11 image to T11 (Optimized Startup)')
-    parser.add_argument('image', help='Path to image')
-    parser.add_argument('--threshold', type=int, default=50, help='Darkness threshold (1-99, default 50)')
-    parser.add_argument('--mirror', action='store_true', help='Mirror image')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('image')
+    parser.add_argument('--threshold', type=int, default=128)
+    parser.add_argument('--mirror', action='store_true')
     args = parser.parse_args()
-    convert_and_print(args.image, args.threshold, args.mirror)
+    print_image_gold(args.image, args.threshold, args.mirror)
