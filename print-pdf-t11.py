@@ -85,7 +85,7 @@ def print_pdf_gold(pdf_path, page_num=0, threshold=180):
         
         # CLEAN EXIT SEQUENCE
         print("Finishing job and feeding paper...")
-        sock.send(b'\x1bd\x02') # Reduced feed to 2 lines
+        sock.send(b'\x1bd\x00') # No feed - fix overshoot
         time.sleep(2.0)         # WAIT for the physical motor to finish
         sock.send(b'\x1b@')     # Reset printer state for the next job
         time.sleep(0.5)         # Let the reset settle
