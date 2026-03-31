@@ -1,61 +1,70 @@
-# THE ULTIMATE T11 / Phomemo M08F Linux Driver
+# THE ULTIMATE T11 / Phomemo M08F Linux Driver (Unified Edition)
 
-This is the **only stable, high-quality Linux driver solution** for the generic Chinese T11 and Phomemo M08F A4 Thermal Printers. 
+This is the **only stable, high-quality Linux driver solution** for the generic Chinese T11 and Phomemo M08F A4 Thermal Printers.
 
-If you have tried other thermal printer drivers and experienced **USB crashes (EPROTO -71)**, **garbled/slanted text**, or **infinite paper feeding**, this repository contains the fix.
+## 🚀 Recent Critical Fixes (v2.0)
 
-## 🚀 The Fixes
-This driver solves the four major problems with this hardware:
-1. **USB Stability:** Standard drivers send data too fast, crashing the printer's fragile STM32 chip. We use a **Block-Printing method** with intentional hardware delays.
-2. **Perfect Alignment:** Standard filters often output incorrect bit-packing. We use **Manual MSB Bit-Packing** to ensure every pixel is exactly where it belongs.
-3. **No Paper Overshoot:** We force the printer into **Continuous Mode** (`\x1f\x1b\x1f\xa1\x00`) to stop it from jumping 1.5 inches after every print.
-4. **Professional Quality:** Renders PDFs and images at **300+ DPI** with white-background flattening for sharp, readable documents and tattoo stencils.
+This driver has been refined to solve the most common "Chinese Thermal Printer" issues:
 
-## 🛠 Hardware Compatibility
-- **Device ID:** `0483:5720` (STMicroelectronics Mass Storage/Printer)
-- **Common Names:** T11, T11PRO, Phomemo M08F, WBK, SPRT SP-RMT11.
-- **Paper Size:** US Letter (8.5"x11") and A4.
-- **Connection:** Bluetooth (Primary/Stable) and USB.
+1.  **Infinite Paper Feeding:** Fixed a critical bug in the height calculation where raw 8-bit grayscale data was misinterpreted, causing the printer to feed 8x more paper than needed.
+2.  **Tear-off Alignment:** Updated the end-of-job sequence to stop exactly at the last printed line (`\x1bd\x00`), preventing the 1.5" overshoot past the tear-off bar.
+3.  **Unified Driver:** Replaced fragmented scripts with a single `t11-print.py` that handles all file types (PDF, PNG, JPG, TXT) and connection modes (USB, Bluetooth).
+4.  **Bluetooth Stability:** Implemented "Safe Packet" mode (64-byte chunks with 5ms delays) to prevent the printer's internal buffer from crashing on Bluetooth.
 
-## 📦 Installation & Usage
+## 📦 Installation
 
 ### 1. Requirements
-- Linux (Arch, Ubuntu, etc.)
-- Python 3
+
+- Python 3 with pyusb: `pip install pyusb`
 - ImageMagick (`magick` command available in PATH)
+- Ghostscript (for PDF rendering)
 
-### 2. Standalone Drivers (Recommended for Stencils/PDFs)
-The standalone scripts bypass the fragile CUPS system and talk directly to the printer for maximum reliability.
+### 2. Standard Usage (Recommended)
 
-**Print a PDF Document:**
+The new `t11-print.py` script is the most reliable way to print.
+
 ```bash
-python3 print-pdf-t11.py document.pdf
+# Print a PDF (USB)
+python3 t11-print.py document.pdf
+
+# Print a Text file (USB)
+python3 t11-print.py notes.txt
+
+# Print via Bluetooth
+python3 t11-print.py image.png --mode bt --bt-addr 41:42:86:99:6F:BA
+
+# Mirror image (for Tattoo Stencils)
+python3 t11-print.py design.png --mirror
 ```
 
-**Print an Image / Tattoo Stencil:**
+## 🛠 CUPS Integration (System Printer)
+
+To use the T11 as a standard system printer (visible in Chrome, LibreOffice, etc.):
+
+### 1. Install Backend
 ```bash
-# Add --mirror for tattoo carbon transfers
-python3 print-image-t11-usb.py image.png --mirror
+sudo cp t11-usb-backend /usr/lib/cups/backend/t11-usb
+sudo chmod +x /usr/lib/cups/backend/t11-usb
 ```
 
-**Print Plain Text:**
+### 2. Add Printer
+Use the provided `t11.ppd` file. When prompted for a driver in CUPS, select **"Provide a PPD File"** and point to `t11.ppd`.
+
 ```bash
-python3 print-text-t11.py notes.txt
+sudo lpadmin -p T11_Printer -E -v "t11-usb://" -i t11.ppd
 ```
 
-### 3. CUPS Integration (System Printer)
-If you want the printer to appear in your standard system print dialog:
-1. Copy the filter: `sudo cp rastertozj /usr/lib/cups/filter/ && sudo chmod +x /usr/lib/cups/filter/rastertozj`
-2. Copy the PPD: `sudo cp t11.ppd /usr/share/cups/model/`
-3. Add the printer: `sudo lpadmin -p T11_Printer -E -v usb://0483/5720?serial=0001 -m t11.ppd`
+## 🔧 Options & Customization
 
-## ⚖️ Options
-- `--threshold [1-99]`: Adjust darkness (Default 50). Use a higher number for thinner lines.
-- `--mirror`: Flips the image horizontally (Essential for tattoo stencils).
-- `--page [num]`: Select which page of a PDF to print.
+- `--threshold [0-255]`: Adjust darkness (Default 128). Lower values are darker.
+- `--page [num]`: Select specific page from a PDF.
+- `--mode [usb|bt]`: Choose connection method.
 
-## 🛡 Future Proof
-Unlike standard CUPS drivers which are being deprecated, the **Python Standalone Drivers** in this repo talk directly to the hardware node. They will continue to work regardless of changes to the Linux printing architecture.
+## 📋 Hardware Specs
+- **Device ID:** `0483:5720`
+- **Resolution:** 203 DPI (1728 pixels wide)
+- **Paper:** US Letter (8.5") or A4 Thermal Roll/Fold
+- **Protocol:** ESC/POS (Customized)
 
 ---
-*Created by Chris Johnson & Gemini MAS. Derived from the zj-58 project with massive stability and A4-specific refinements.*
+*Maintained by Chris Johnson. Refined with the help of Gemini CLI for extreme stability.*

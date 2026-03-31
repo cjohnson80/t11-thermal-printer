@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+"""
+CUPS backend for T11 Thermal Printer via USB
+This backend converts print data using ImageMagick before sending to the printer
+"""
+
+import os
+import sys
+import subprocess
+import tempfile
+import usb.core
+import usb.util
+import time
+
+VENDOR_ID = 0x0483
+PRODUCT_ID = 0x5720
+WIDTH_PX = 1728
+
+def find_printer():
+    return usb.core.find(idVendor=VENDOR_ID, idProduct=PRODUCT_ID)
+
+def init_printer(dev):
+    if dev.is_kernel_driver_active(0):
+        dev.detach_kernel_driver(0)
+    usb.util.claim_interface(dev, 0)
+    
+    dev.write(0x01, b'\x1b@')
+    time.sleep(0.1)
+    dev.write(0x01, b'\x1f\x1b\x1f\xa1\x00')
+    time.sleep(0.1)
+
+def cleanup_printer(dev):
+    try:
+        usb.util.release_interface(dev, 0)
+    except:
+        pass
+    try:
+        usb.util.dispose_resources(dev)
+    except:
+        pass
+
+def convert_to_raster(input_data, output_file):
+    """Convert print data to raster format using ImageMagick"""
+    # Use a temporary file for input as ImageMagick needs a filename
+    with tempfile.NamedTemporaryFile(suffix='.tmp', delete=False) as tmp_in:
+        tmp_in.write(input_data)
+        tmp_in.flush()
+        tmp_name = tmp_in.name
+    
+    try:
+        # ImageMagick can handle most formats (PDF, PNG, etc.) automatically
+        # We use '300' density for high-quality PDF rendering
+        cmd = [
+            "magick", "-density", "300",
+            "-background", "white", tmp_name,
+            "-alpha", "remove", "-flatten",
+            "-resize", f"{WIDTH_PX}x",
+            "-colorspace", "gray", "-depth", "8",
+            f"GRAY:{output_file}"
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"DEBUG: Magick failed: {result.stderr}", file=sys.stderr)
+            # Fallback for plain text if it fails as an image
+            cmd_text = [
+                "magick", "-background", "white", "-fill", "black",
+                "-font", "DejaVu-Sans-Mono", "-pointsize", "12",
+                "-size", f"{WIDTH_PX}x", f"caption:@{tmp_name}",
+                "-colorspace", "gray", "-depth", "8",
+                f"GRAY:{output_file}"
+            ]
+            subprocess.run(cmd_text, check=True)
+    finally:
+        if os.path.exists(tmp_name):
+            os.unlink(tmp_name)
+
+def send_raster(dev, raster_file):
+    """Send raster file to printer"""
+    with open(raster_file, 'rb') as f:
+        raster_data = f.read()
+    
+    height = len(raster_data) // WIDTH_PX
+    bytes_per_line = WIDTH_PX // 8
+    lines_per_block = 24
+    
+    bit_data = bytearray()
+    threshold = 128
+    for y in range(height):
+        for x_byte in range(bytes_per_line):
+            byte_val = 0
+            for bit in range(8):
+                pixel_idx = (y * WIDTH_PX) + (x_byte * 8) + bit
+                if pixel_idx < len(raster_data) and raster_data[pixel_idx] < threshold:
+                    byte_val |= (1 << (7 - bit))
+            bit_data.append(byte_val)
+    
+    for y_start in range(0, height, lines_per_block):
+        y_end = min(y_start + lines_per_block, height)
+        num_lines = y_end - y_start
+        
+        header = bytes([0x1d, 0x76, 0x30, 0, bytes_per_line % 256, bytes_per_line // 256, num_lines % 256, num_lines // 256])
+        block_data = bit_data[y_start * bytes_per_line : y_end * bytes_per_line]
+        
+        dev.write(0x01, header + block_data)
+        time.sleep(0.2)
+    
+    # Finish without overshoot
+    dev.write(0x01, b'\x1bd\x00')
+    time.sleep(1.0)
+
+def main():
+    if len(sys.argv) < 5:
+        print("Usage: t11-usb job-id user title copies options [file]", file=sys.stderr)
+        sys.exit(0) # Standard CUPS backend discovery
+    
+    job_id, user, title, copies = sys.argv[1:5]
+    options = sys.argv[5] if len(sys.argv) > 5 else ""
+    
+    is_text = False
+    if len(sys.argv) > 6:
+        input_file = sys.argv[6]
+        if os.path.exists(input_file):
+            if input_file.lower().endswith('.txt'):
+                is_text = True
+            with open(input_file, 'rb') as f:
+                print_data = f.read()
+        else:
+            print(f"Error: File {input_file} not found", file=sys.stderr)
+            sys.exit(1)
+    else:
+        print_data = sys.stdin.buffer.read()
+    
+    if not print_data:
+        print("DEBUG: No print data", file=sys.stderr)
+        sys.exit(0)
+    
+    dev = find_printer()
+    if dev is None:
+        print("Error: T11 printer not found", file=sys.stderr)
+        sys.exit(1)
+    
+    # Use /tmp specifically to avoid permission issues within CUPS spool directories
+    tempfile.tempdir = "/tmp"
+    
+    with tempfile.NamedTemporaryFile(suffix='.gray', delete=False) as tmp_out:
+        raster_file = tmp_out.name
+    
+    try:
+        init_printer(dev)
+        
+        # If explicitly text, or if title suggests text
+        if is_text or title.lower().endswith('.txt'):
+            # Text renderer
+            with tempfile.NamedTemporaryFile(suffix='.tmp', delete=False, dir="/tmp") as tmp_in:
+                tmp_in.write(print_data)
+                tmp_in.flush()
+                tmp_name = tmp_in.name
+            try:
+                cmd_text = [
+                    "magick", "-background", "white", "-fill", "black",
+                    "-font", "DejaVu-Sans-Mono", "-pointsize", "12",
+                    "-size", f"{WIDTH_PX}x", f"caption:@{tmp_name}",
+                    "-colorspace", "gray", "-depth", "8",
+                    f"GRAY:{raster_file}"
+                ]
+                subprocess.run(cmd_text, check=True)
+            finally:
+                if os.path.exists(tmp_name): os.unlink(tmp_name)
+        else:
+            convert_to_raster(print_data, raster_file)
+            
+        send_raster(dev, raster_file)
+        print(f"T11: Printed {title} successfully", file=sys.stderr)
+        
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    finally:
+        cleanup_printer(dev)
+        if os.path.exists(raster_file):
+            os.unlink(raster_file)
+    
+    sys.exit(0)
+
+if __name__ == '__main__':
+    main()

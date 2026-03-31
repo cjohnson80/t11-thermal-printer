@@ -22,7 +22,6 @@
 *cupsVersion: 2.2
 *cupsModelNumber: 1728
 *cupsManualCopies: True
-*cupsFilter: "application/vnd.cups-raster 100 rastertozj"
 
 *OpenUI *PageSize/Media Size: PickOne
 *OrderDependency: 10 AnySetup *PageSize
